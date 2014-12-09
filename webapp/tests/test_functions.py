@@ -74,9 +74,14 @@ class FunctionsTest(TestCase):
 
         def n_percentile(perc, expected):
             result = functions.nPercentile({}, seriesList, perc)
+            print result
             self.assertEqual(expected, result)
 
-        n_percentile(30, [[20], [31], [61], [91], [30], [60], [90], [90]])
+        expectedList = []
+        for i, c in [[20], [31], [61], [91], [30], [60], [90], [90]]:
+            expectedList.append(TimeSeries('Test(%d)' % i, 0, 1, 1, c))
+
+        n_percentile(30, expectedList)
         n_percentile(90, [[50], [91], [181], [271], [90], [180], [270], [270]])
         n_percentile(95, [[50], [96], [191], [286], [95], [190], [285], [285]])
 
@@ -375,3 +380,37 @@ class FunctionsTest(TestCase):
         ]
         results = functions.multiplySeriesWithWildcards({}, copy.deepcopy(seriesList1+seriesList2), 2,3)
         self.assertEqual(results,expectedResult)
+
+    def test_summarize(self):
+
+        series1minList = [
+            TimeSeries('value',0,60,10,[None])
+        ]
+        expected1minResult = [
+            TimeSeries('summarize(value, "1min", "avg")',0,120,60,[None,None])
+        ]
+        results = functions.summarize({}, series1minList, "1min", "avg")
+        self.assertEqual(len(results),len(expected1minResult))
+        self.assertEqual(results[0],expected1minResult[0])
+        self.assertEqual(results,expected1minResult)
+
+        series1dayList = [
+            # 3 first month from epoch
+            TimeSeries('value',0,(31+28+31)*86400,86400,[None])
+        ]
+        # old way
+        #expected1monthResult = [
+        #    TimeSeries('summarize(value, "1month", "avg")',0,120*86400,2592000,[None,None,None,None])
+        #]
+        # new way
+        expected1monthResult = [
+            TimeSeries('asummarize(value, "1month", "avg")',0,120*86400,[31*86400,28*86400,31*86400],[None,None,None,None])
+        ]
+        results = functions.summarize({}, series1dayList, "1month", "avg")
+        #print expected1monthResult
+        #print results
+
+        self.assertEqual(len(results),len(expected1monthResult))
+        self.assertEqual(results[0],expected1monthResult[0])
+        self.assertEqual(results,expected1monthResult)
+

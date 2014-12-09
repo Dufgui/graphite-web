@@ -73,8 +73,15 @@ class TimeSeries(list):
 
 
   def __repr__(self):
-    return 'TimeSeries(name=%s, start=%s, end=%s, step=%s)' % (self.name, self.start, self.end, self.step)
+    return 'TimeSeries(name=%s, start=%s, end=%s, step=%s, values=%s)' % (self.name, self.start, self.end, self.step, list.__repr__(self))
 
+  def __eq__(self, other):
+    if isinstance(other, self.__class__):
+      return self.name==other.name and self.start==other.start and self.end==other.end and self.step==other.step
+    else:
+      return False
+    #return isinstance(other, TimeSeries) and other.equalityprop == self.equalityprop
+    
 
   def getInfo(self):
     """Pickle-friendly representation of the series"""
