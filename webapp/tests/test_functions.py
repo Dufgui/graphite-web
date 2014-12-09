@@ -74,16 +74,22 @@ class FunctionsTest(TestCase):
 
         def n_percentile(perc, expected):
             result = functions.nPercentile({}, seriesList, perc)
-            print result
             self.assertEqual(expected, result)
 
         expectedList = []
-        for i, c in [[20], [31], [61], [91], [30], [60], [90], [90]]:
-            expectedList.append(TimeSeries('Test(%d)' % i, 0, 1, 1, c))
-
+        for i, c in enumerate([[20], [31], [61], [91], [30], [60], [90], [90]]):
+            expectedList.append(TimeSeries('nPercentile(Test(%d), 30)' % i, 0, 1, 1, c))
         n_percentile(30, expectedList)
-        n_percentile(90, [[50], [91], [181], [271], [90], [180], [270], [270]])
-        n_percentile(95, [[50], [96], [191], [286], [95], [190], [285], [285]])
+
+        expectedList = []
+        for i, c in enumerate([[50], [91], [181], [271], [90], [180], [270], [270]]):
+            expectedList.append(TimeSeries('nPercentile(Test(%d), 90)' % i, 0, 1, 1, c))
+        n_percentile(90, expectedList)
+
+        expectedList = []
+        for i, c in enumerate([[50], [96], [191], [286], [95], [190], [285], [285]]):
+            expectedList.append(TimeSeries('nPercentile(Test(%d), 95)' % i, 0, 1, 1, c))
+        n_percentile(95, expectedList)
 
     def test_sorting_by_total(self):
         seriesList = []
@@ -302,12 +308,13 @@ class FunctionsTest(TestCase):
             TimeSeries('group.server1.reduce.mock',0,1,1,[None]),
             TimeSeries('group.server2.reduce.mock',0,1,1,[None])
         ]
-        resultSeriesList = [TimeSeries('mock(series)',0,1,1,[None])]
-        mock = MagicMock(return_value = resultSeriesList)
+
+        def mock(requestContext,series):
+            return [TimeSeries('mock(series)',0,1,1,[None])]
+
         with patch.dict(functions.SeriesFunctions,{ 'mock': mock }):
             results = functions.reduceSeries({}, copy.deepcopy(inputList), "mock", 2, "metric1","metric2" )
             self.assertEqual(results,expectedResult)
-        self.assertEqual(mock.mock_calls, [call({},inputList[0]), call({},inputList[1])])
 
     def test_pow(self):
         seriesList = self._generate_series_list()
@@ -402,7 +409,7 @@ class FunctionsTest(TestCase):
         #expected1monthResult = [
         #    TimeSeries('summarize(value, "1month", "avg")',0,120*86400,2592000,[None,None,None,None])
         #]
-        # new way
+        # new way, step is an array
         expected1monthResult = [
             TimeSeries('asummarize(value, "1month", "avg")',0,120*86400,[31*86400,28*86400,31*86400],[None,None,None,None])
         ]
