@@ -123,7 +123,7 @@ def renderView(request):
 
       for series in data:
         for i, value in enumerate(series):
-          timestamp = datetime.fromtimestamp(series.start + (i * series.step), requestOptions['tzinfo'])
+          timestamp = series.getDatetimeOfDataPoint(i, requestOptions['tzinfo'])
           writer.writerow((series.name, timestamp.strftime("%Y-%m-%d %H:%M:%S"), value))
 
       return response
@@ -136,26 +136,12 @@ def renderView(request):
         timeRange = endTime - startTime
         maxDataPoints = requestOptions['maxDataPoints']
         for series in data:
-          numberOfDataPoints = timeRange/series.step
-          if maxDataPoints < numberOfDataPoints:
-            valuesPerPoint = math.ceil(float(numberOfDataPoints) / float(maxDataPoints))
-            secondsPerPoint = int(valuesPerPoint * series.step)
-            # Nudge start over a little bit so that the consolidation bands align with each call
-            # removing 'jitter' seen when refreshing.
-            nudge = secondsPerPoint + (series.start % series.step) - (series.start % secondsPerPoint)
-            series.start = series.start + nudge
-            valuesToLose = int(nudge/series.step)
-            for r in range(1, valuesToLose):
-              del series[0]
-            series.consolidate(valuesPerPoint)
-            timestamps = range(int(series.start), int(series.end) + 1, int(secondsPerPoint))
-          else:
-            timestamps = range(int(series.start), int(series.end) + 1, int(series.step))
+          timestamps = series.getTimeStampsOfDataPoint(startTime, endTime, timeRange, maxDataPoints)
           datapoints = zip(series, timestamps)
           series_data.append(dict(target=series.name, datapoints=datapoints))
       else:
         for series in data:
-          timestamps = range(int(series.start), int(series.end) + 1, int(series.step))
+          timestamps = series.getTimeStampsOfDataPoint(series.start, series.end, None, None)
           datapoints = zip(series, timestamps)
           series_data.append(dict(target=series.name, datapoints=datapoints))
 
@@ -176,7 +162,10 @@ def renderView(request):
     if format == 'raw':
       response = HttpResponse(content_type='text/plain')
       for series in data:
-        response.write( "%s,%d,%d,%d|" % (series.name, series.start, series.end, series.step) )
+        if(isinstance(series.step, list)):
+          response.write( "%s,%d,%d,%s|" % (series.name, series.start, series.end, join(map(str,series.step)) ) )
+        else:
+          response.write( "%s,%d,%d,%d|" % (series.name, series.start, series.end, series.step) )
         response.write( ','.join(map(str,series)) )
         response.write('\n')
 

@@ -34,7 +34,10 @@ class TimeSeries(list):
     if self.valuesPerPoint > 1:
       return self.__consolidatingGenerator( list.__iter__(self) )
     else:
-      return list.__iter__(self)
+      if(isinstance(self.step, list) and len(self.step) < len(self)):
+        return list.__iter__(self[:len(self.step)])
+      else:  
+        return list.__iter__(self)
 
 
   def consolidate(self, valuesPerPoint):
@@ -93,6 +96,38 @@ class TimeSeries(list):
       'values' : list(self),
     }
 
+  def getDatetimeOfDataPoint(self, bucketId, tzinfo):
+    if(isinstance(self.step, list)):
+      return datetime.fromtimestamp(self.start + sum(self.step[:bucketId]), tzinfo)
+    else:
+      return datetime.fromtimestamp(self.start + (bucketId * self.step), tzinfo)
+
+  # We reduce resolution if there is too many point
+  def getTimeStampsOfDataPoint(self, startTime, endTime, timeRange, maxDataPoints):
+    if(isinstance(self.step, list)):
+      timestamps = [ts for ts in self.step if ts >= startTime and ts <= endTime]
+      numberOfDataPoints = len(timestamps)
+      if not (maxDataPoints is None) and maxDataPoints < numberOfDataPoints:
+        return timestamps[:maxDataPoints]
+      else:
+        return timestamps
+    else:
+      if not (maxDataPoints is None):
+        numberOfDataPoints = timeRange / self.step
+        if maxDataPoints < numberOfDataPoints:
+          valuesPerPoint = math.ceil(float(numberOfDataPoints) / float(maxDataPoints))
+          secondsPerPoint = int(valuesPerPoint * self.step)
+          # Nudge start over a little bit so that the consolidation bands align with each call
+          # removing 'jitter' seen when refreshing.
+          nudge = secondsPerPoint + (self.start % self.step) - (self.start % secondsPerPoint)
+          self.start = self.start + nudge
+          valuesToLose = int(nudge/self.step)
+          for r in range(1, valuesToLose):
+            del self[0]
+          self.consolidate(valuesPerPoint)
+          return range(int(self.start), int(self.end) + 1, int(secondsPerPoint))
+      return range(int(self.start), int(self.end) + 1, int(self.step))
+        
 
 # Data retrieval API
 def fetchData(requestContext, pathExpr):
