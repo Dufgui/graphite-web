@@ -411,7 +411,7 @@ class FunctionsTest(TestCase):
         #]
         # new way, step is an array
         expected1monthResult = [
-            TimeSeries('asummarize(value, "1month", "avg")',0,120*86400,[31*86400,28*86400,31*86400],[None,None,None,None])
+            TimeSeries('summarize(value, "1month", "avg")',0,90*86400,[31*86400,28*86400,31*86400],[None,None,None])
         ]
         results = functions.summarize({}, series1dayList, "1month", "avg")
         #print expected1monthResult

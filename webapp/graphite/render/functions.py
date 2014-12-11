@@ -19,9 +19,10 @@ import math
 import re
 import random
 import time
+import calendar
 
 from graphite.logger import log
-from graphite.render.attime import parseTimeOffset
+from graphite.render.attime import parseTimeOffset, parseTimeOffsetForTimeUnits
 
 from graphite.events import models
 
@@ -2923,8 +2924,20 @@ def summarize(requestContext, seriesList, intervalString, func='sum', alignToFro
     &target=summarize(metric, "13week", "avg", true)&from=midnight+20100101 # 2010 Q1-4
   """
   results = []
-  delta = parseTimeOffset(intervalString)
-  interval = delta.seconds + (delta.days * 86400)
+
+  isDynamicInterval = False
+  if not alignToFrom:
+    unitsStrings = parseTimeOffsetForTimeUnits(intervalString)  
+    if unitsStrings == ['months']:
+      isDynamicInterval = True
+    elif unitsStrings == ['years']:
+      isDynamicInterval = True
+  
+  # Activate point by month/year with dynamic step if not alignFrom   
+  interval = None
+  if not isDynamicInterval:
+    delta = parseTimeOffset(intervalString)
+    interval = delta.seconds + (delta.days * 86400)
 
   for series in seriesList:
     buckets = {}
@@ -2932,12 +2945,29 @@ def summarize(requestContext, seriesList, intervalString, func='sum', alignToFro
     timestamps = range( int(series.start), int(series.end), int(series.step) )
     datapoints = zip(timestamps, series)
 
-    for timestamp_, value in datapoints:
-      if alignToFrom:
-        bucketInterval = int((timestamp_ - series.start) / interval)
-      else:
-        bucketInterval = timestamp_ - (timestamp_ % interval)
+    seriesStartDT = None
+    if not alignToFrom:
+      if isDynamicInterval:
+        seriesStartDT = datetime.fromtimestamp(series.start)
 
+    def buildBucketInterval(timestamp_, seriesStart, interval, seriesStartDT):
+      if alignToFrom:
+        return int((timestamp_ - seriesStart) / interval)
+      else:
+        if unitsStrings == ['months']:
+          dataDT = datetime.fromtimestamp(timestamp_)
+          dataMonth = dataDT.month
+          dataYear = dataDT.year
+          return int(dataMonth - seriesStartDT.month + 12 * (dataYear - seriesStartDT.year))
+        elif unitsStrings == ['years']:
+          dataYear = datetime.fromtimestamp(timestamp_).year
+          return int(dataYear - seriesStartDT.year)
+        else:
+          return timestamp_ - (timestamp_ % interval)
+
+    for timestamp_, value in datapoints:
+      bucketInterval = buildBucketInterval(timestamp_, series.start, interval, seriesStartDT)
+      
       if bucketInterval not in buckets:
         buckets[bucketInterval] = []
 
@@ -2948,16 +2978,56 @@ def summarize(requestContext, seriesList, intervalString, func='sum', alignToFro
       newStart = series.start
       newEnd = series.end
     else:
-      newStart = series.start - (series.start % interval)
-      newEnd = series.end - (series.end % interval) + interval
+      if unitsStrings == ['months']:
+        newStart = calendar.timegm(datetime(seriesStartDT.year, seriesStartDT.month, 1).timetuple())
+        seriesEndDT = datetime.fromtimestamp(series.end)
+        newEnd = calendar.timegm(datetime(seriesEndDT.year, seriesEndDT.month, 1).timetuple())
+      elif unitsStrings == ['years']:
+        newStart = calendar.timegm(datetime(seriesStartDT.year, 1, 1).timetuple())
+        seriesEndDT = datetime.fromtimestamp(series.end)
+        newEnd = calendar.timegm(datetime(seriesEndDT.year, 1, 1).timetuple())
+      else:
+        newStart = series.start - (series.start % interval)
+        newEnd = series.end - (series.end % interval) + interval
 
     newValues = []
-    for timestamp_ in range(newStart, newEnd, interval):
-      if alignToFrom:
-        newEnd = timestamp_
-        bucketInterval = int((timestamp_ - series.start) / interval)
-      else:
-        bucketInterval = timestamp_ - (timestamp_ % interval)
+
+    if not isDynamicInterval:
+      timestampsRange = zip(range(newStart, newEnd, interval), [interval] * ((newEnd - newStart)/interval)  ) 
+    else:
+      intervals=[]
+      if unitsStrings == ['months']:
+        def monthRange(startDate, endDate, monthStep=1):
+          currentDate = startDate
+          while currentDate < endDate:
+            carry, newMonth = divmod(currentDate.month - 1 + monthStep, 12)
+            newMonth += 1
+            newDate = currentDate.replace(year=currentDate.year + carry,
+                                                month=newMonth)
+            intervalSize = newDate - currentDate
+            intervalSize = intervalSize.days * 86400 + intervalSize.seconds
+            yield calendar.timegm(currentDate.timetuple()), intervalSize
+            currentDate = newDate
+
+        timestampsRange = monthRange(datetime.fromtimestamp(newStart), datetime.fromtimestamp(newEnd))
+      elif unitsStrings == ['years']:
+        def yearRange(startDate, endDate, yearStep=1):
+          currentDate = startDate
+          while currentDate < endDate:
+            currentDate.year
+            newYear += yearStep
+            newDate = currentDate.replace(year=newYear)
+            intervalSize = newDate - currentDate
+            intervalSize = intervalSize.days * 86400 + intervalSize.seconds
+            yield calendar.timegm(currentDate.timetuple()), intervalSize
+            currentDate = newDate
+        timestampsRange = yearRange(datetime.fromtimestamp(newStart), datetime.fromtimestamp(newEnd))
+
+    for timestamp_, intervalSize  in timestampsRange:
+      bucketInterval = buildBucketInterval(timestamp_, series.start, interval, seriesStartDT)
+      
+      if isDynamicInterval:
+        intervals.append(intervalSize)
 
       bucket = buckets.get(bucketInterval, [])
 
@@ -2979,7 +3049,10 @@ def summarize(requestContext, seriesList, intervalString, func='sum', alignToFro
       newEnd += interval
 
     newName = "summarize(%s, \"%s\", \"%s\"%s)" % (series.name, intervalString, func, alignToFrom and ", true" or "")
-    newSeries = TimeSeries(newName, newStart, newEnd, interval, newValues)
+    if isDynamicInterval:
+      newSeries = TimeSeries(newName, newStart, newEnd, intervals, newValues)
+    else:
+      newSeries = TimeSeries(newName, newStart, newEnd, interval, newValues)
     newSeries.pathExpression = newName
     results.append(newSeries)
 

@@ -148,6 +148,26 @@ def parseTimeOffset(offset):
 
   return t
 
+def parseTimeOffsetForTimeUnits(offset):
+  if not offset:
+    return []
+
+  if not offset[0].isdigit():
+    offset = offset[1:]
+
+  units = []
+
+  while offset:
+    i = 1
+    while offset[:i].isdigit() and i <= len(offset): i += 1
+    offset = offset[i-1:]
+    i = 1
+    while offset[:i].isalpha() and i <= len(offset): i += 1
+    unit = offset[:i-1]
+    offset = offset[i-1:]
+    unitString = getUnitString(unit)
+    units.append(unitString)
+  return units
 
 def getUnitString(s):
   if s.startswith('s'): return 'seconds'
