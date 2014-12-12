@@ -102,18 +102,24 @@ class TimeSeries(list):
     else:
       return datetime.fromtimestamp(self.start + (bucketId * self.step), tzinfo)
 
+  def getNumberOfDataPoint(self, startTime, endTime, timeRange):
+    if(isinstance(self.step, list)):
+      timestamps = [ts for ts in self.step if ts >= startTime and ts <= endTime]
+      return len(timestamps)
+    else:
+      return timeRange / self.step
+
   # We reduce resolution if there is too many point
   def getTimeStampsOfDataPoint(self, startTime, endTime, timeRange, maxDataPoints):
     if(isinstance(self.step, list)):
-      timestamps = [ts for ts in self.step if ts >= startTime and ts <= endTime]
-      numberOfDataPoints = len(timestamps)
+      numberOfDataPoints = self.getNumberOfDataPoint(startTime, endTime, timeRange)
       if not (maxDataPoints is None) and maxDataPoints < numberOfDataPoints:
         return timestamps[:maxDataPoints]
       else:
         return timestamps
     else:
       if not (maxDataPoints is None):
-        numberOfDataPoints = timeRange / self.step
+        numberOfDataPoints = self.getNumberOfDataPoint(startTime, endTime, timeRange)
         if maxDataPoints < numberOfDataPoints:
           valuesPerPoint = math.ceil(float(numberOfDataPoints) / float(maxDataPoints))
           secondsPerPoint = int(valuesPerPoint * self.step)
@@ -127,7 +133,12 @@ class TimeSeries(list):
           self.consolidate(valuesPerPoint)
           return range(int(self.start), int(self.end) + 1, int(secondsPerPoint))
       return range(int(self.start), int(self.end) + 1, int(self.step))
-        
+      
+  def getLastIntervalTs(self):
+    if(isinstance(self.step, list)):
+      return series.end - series.step[-1]
+    else:
+      return series.end - series.step
 
 # Data retrieval API
 def fetchData(requestContext, pathExpr):

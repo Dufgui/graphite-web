@@ -660,7 +660,7 @@ class LineGraph(Graph):
     if self.lineMode == 'staircase':
       self.endTime = max([series.end for series in self.data])
     else:
-      self.endTime = max([(series.end - series.step) for series in self.data])
+      self.endTime = max([series.getLastIntervalTs() for series in self.data])
     self.timeRange = self.endTime - self.startTime
 
     #Now we consolidate our data points to fit in the currently estimated drawing area
@@ -821,7 +821,11 @@ class LineGraph(Graph):
         if 'stacked' in series.options:
           series.options['alpha'] = alpha
 
-          newSeries = TimeSeries(series.name, series.start, series.end, series.step*series.valuesPerPoint, [x for x in series])
+          if isinstance(self.step, list):
+            newSeries = TimeSeries(series.name, series.start, series.end, series.step, [x for x in series])
+          else:
+            newSeries = TimeSeries(series.name, series.start, series.end, series.step*series.valuesPerPoint, [x for x in series])
+
           newSeries.xStep = series.xStep
           newSeries.color = series.color
           if 'secondYAxis' in series.options:
@@ -858,7 +862,10 @@ class LineGraph(Graph):
 
       # Shift the beginning of drawing area to the start of the series if the
       # graph itself has a larger range
-      missingPoints = (series.start - self.startTime) / series.step
+      if isinstance(self.step, list):
+        missingPoints = (series.start - self.startTime) / series.step[0]
+      else:
+        missingPoints = (series.start - self.startTime) / series.step
       startShift = series.xStep * (missingPoints / series.valuesPerPoint)
       x = float(self.area['xmin']) + startShift + (self.lineWidth / 2.0)
       y = float(self.area['ymin'])
@@ -1004,10 +1011,9 @@ class LineGraph(Graph):
   def consolidateDataPoints(self):
     numberOfPixels = self.graphWidth = self.area['xmax'] - self.area['xmin'] - (self.lineWidth + 1)
     for series in self.data:
-      numberOfDataPoints = self.timeRange/series.step
+      numberOfDataPoints = series.getNumberOfDataPoint(self.startTime, self.endTime, self.timeRange)
       minXStep = float( self.params.get('minXStep',1.0) )
-      divisor = self.timeRange / series.step
-      bestXStep = numberOfPixels / divisor
+      bestXStep = numberOfPixels / numberOfDataPoints
       if bestXStep < minXStep:
         drawableDataPoints = int( numberOfPixels / minXStep )
         pointsPerPixel = math.ceil( float(numberOfDataPoints) / float(drawableDataPoints) )
